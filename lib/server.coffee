@@ -2,6 +2,7 @@ extensions = require('./extensions.coffee')
 utilities = require('./utilities.coffee')
 fs = require('fs')
 url = require('url')
+async = require('async')
 _ = require('underscore')
 _path = require('path')
 
@@ -13,7 +14,6 @@ module.exports = class Server
     
   serverHandler: (req, res) =>
     parsed = utilities.parseRequest(req)
-    console.log(parsed)
     route = _.find(@routes, (i) ->
       i.route is parsed.path
     )
@@ -87,7 +87,48 @@ module.exports = class Server
             self.on(file, (req, res) =>
               self.sendFile(res, '.'+file)
             )
-        console.log(@routes)
+        #console.log(@routes)
+      )
+  
+  render: (res, path) ->
+    dir = _path.dirname(path)
+
+    if utilities.isFile(path)
+      fs.readFile(path, 'utf8', (err, content) ->
+        res.writeHead(200,
+          'Content-Type': extensions.html
+        )
+        
+        regexps =
+          inserts: new RegExp('\\{\\{\\s*\\>\\s*(.+)?\\s*\\}\\}', 'gim')
+        
+        inserts = _.uniq(content.match(regexps.inserts)).map((ins) ->
+          (cb) ->
+            file = _path.relative(__dirname, _path.join(dir, ins.replace(regexps.inserts, '$1').trim()))
+            
+            if /\.(html|htm)$/i.test(file)
+              fs.readFile(file, 'utf8', (err, content) ->
+                if err and err.errno is 34
+                  content = '<!-- Cant find HTML insert '+err.path+' -->'
+
+                cb(null,
+                  token: ins
+                  content: content
+                )
+              )
+            else if /\.(js|coffee)$/i.test(file)
+              cb(null,
+                token: ins
+                content: require(file)()
+              )
+        )
+        
+        async.series(inserts, (err, results) ->
+          for reg in results
+            content = content.replace(new RegExp(reg.token,'gim'), reg.content)
+            
+          res.end(content)
+        )   
       )
   
   listen: (port = 8000) ->
