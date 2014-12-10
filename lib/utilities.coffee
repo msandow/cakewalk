@@ -7,17 +7,20 @@ _path = require('path')
 
 module.exports =
   parseRequest: (req) ->
+    joined = _path.join(process.cwd(), url.parse(req.url).pathname)
     {
       headers: req.headers
       url: req.url
       method: req.method
-      path: _path.join(process.cwd(), url.parse(req.url).pathname)
+      path: joined
+      ext: _path.extname(joined)
     }
   
   directoryWalker:  (dir, cb) ->
     paths = []
     q = async.queue((item, callback) ->
       if /\.[\w]+$/gi.test(item.root + item.path)
+        
         paths.push(item.root + item.path)
         callback()
       

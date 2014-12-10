@@ -5,6 +5,7 @@ url = require('url')
 async = require('async')
 _ = require('underscore')
 _path = require('path')
+coffee = require('coffee-script')
 
 module.exports = class Server
   constructor: () ->
@@ -14,17 +15,28 @@ module.exports = class Server
     
   serverHandler: (req, res) =>
     parsed = utilities.parseRequest(req)
-    route = _.find(@routes, (i) ->
+    routes = _.filter(@routes, (i) ->
       i.route is parsed.path
     )
 
-    if route
-      route.handler.apply(@,[req,res])
+    self = this
+
+    if routes.length
+      async.series(routes.map((i) ->
+        (cb) ->
+          next = () ->
+            cb(null, true)
+          
+          i.handler.apply(self, [req, res, next])
+      ), (err, results) ->
+        res.end()
+      )
     else
       @notFound(res)
-  
-  sendFile: (res, path, name) ->
+    
+  sendFile: (res, path, transforms) ->
     parsed = utilities.getExtensionDataForPath(path)
+
     if parsed
       res.writeHead(200,
         'Content-Type': extensions[parsed.ext]
@@ -33,7 +45,20 @@ module.exports = class Server
         bufferSize: 64 * 1024
       )
       
-      stream.pipe(res)
+      if transforms[parsed.ext]
+        streamText = ''
+      
+        stream 
+        .on('end', ()->
+          res.end(coffee.compile(streamText))
+        )
+        .on('readable', ()->
+          chunk
+          while(null isnt (chunk = stream.read()))
+            streamText += chunk
+        )
+      else
+        stream.pipe(res)
     else
       @notFound(res)
   
@@ -48,7 +73,7 @@ module.exports = class Server
       'Content-Type': contentType
     )
     
-    res.end(data)
+    res.write(data)
   
   notFound: (res) ->
     res.writeHead(404,
@@ -58,24 +83,17 @@ module.exports = class Server
     res.end('')
   
   on: (route, handler) ->
-    currRoute = _.find(@routes, (i) ->
-      i.route is route
-    )
-
     newRoute = _path.resolve(__dirname, process.cwd() + route)
 
     if route[route.length-1] is '/' and newRoute[newRoute.length-1] isnt '/'
       newRoute += '/'
 
-    if not currRoute
-      @routes.push(
-        route: newRoute
-        handler: handler
-      )
-    else
-      route.handler = handler
-  
-  static: (path) ->
+    @routes.push(
+      route: newRoute
+      handler: handler
+    )
+
+  static: (path, transforms={}) ->
     self = this
     if utilities.isDirectory(path)
       utilities.directoryWalker(path, (files) =>        
@@ -84,51 +102,68 @@ module.exports = class Server
           file = '/' + file if file[0] isnt '/' and file[0] isnt '.'
         
           do (file) =>            
-            self.on(file, (req, res) =>
-              self.sendFile(res, '.'+file)
+            self.on(file, (req, res, next) =>
+              self.sendFile(res, '.'+file, transforms)
             )
         #console.log(@routes)
       )
   
-  render: (res, path) ->
+  render: (res, path, cb) ->
     dir = _path.dirname(path)
-
-    if utilities.isFile(path)
-      fs.readFile(path, 'utf8', (err, content) ->
-        res.writeHead(200,
-          'Content-Type': extensions.html
-        )
-        
-        regexps =
-          inserts: new RegExp('\\{\\{\\s*\\>\\s*(.+)?\\s*\\}\\}', 'gim')
-        
-        inserts = _.uniq(content.match(regexps.inserts)).map((ins) ->
+    
+    res.writeHead(200,
+      'Content-Type': extensions.html
+    )
+    
+    regexps =
+      inserts: new RegExp('\\{\\{\\s*\\>\\s*(.+)?\\s*\\}\\}', 'gim')
+    
+    haveParsed ={}
+    
+    parser  = (content) ->
+      inserts = _.uniq(content.match(regexps.inserts))
+      
+      if inserts.length
+        inserts = inserts.map((ins) ->
           (cb) ->
             file = _path.relative(__dirname, _path.join(dir, ins.replace(regexps.inserts, '$1').trim()))
-            
+
+            if haveParsed[file]
+              cb(null, haveParsed[file])
+              return
+
             if /\.(html|htm)$/i.test(file)
               fs.readFile(file, 'utf8', (err, content) ->
                 if err and err.errno is 34
                   content = '<!-- Cant find HTML insert '+err.path+' -->'
 
-                cb(null,
+                haveParsed[file] =
                   token: ins
                   content: content
-                )
+
+                cb(null, haveParsed[file])
               )
             else if /\.(js|coffee)$/i.test(file)
-              cb(null,
-                token: ins
-                content: require(file)()
-              )
+              haveParsed[file] =
+                  token: ins
+                  content: require(file)()
+
+              cb(null, haveParsed[file])
         )
-        
+
         async.series(inserts, (err, results) ->
           for reg in results
             content = content.replace(new RegExp(reg.token,'gim'), reg.content)
-            
-          res.end(content)
-        )   
+
+          parser(content)
+        )
+      else
+        res.write(content)
+        cb()
+        
+    if utilities.isFile(path)
+      fs.readFile(path, 'utf8', (err, content) ->
+        parser(content)
       )
   
   listen: (port = 8000) ->
