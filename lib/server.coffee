@@ -135,7 +135,7 @@ module.exports = class Server
         #console.log(@routes)
       )
   
-  render: (res, path) ->
+  render: (res, path, tokens={}) ->
     dir = _path.dirname(path)
     
     res.writeHead(200,
@@ -143,7 +143,8 @@ module.exports = class Server
     )
     
     regexps =
-      inserts: new RegExp('\\{\\{\\s*\\>\\s*(.+)?\\s*\\}\\}', 'gim')
+      inserts: new RegExp('\\{\\{\\s*\\>\\s*(.+?)\\s*\\}\\}', 'gim')
+      tokens: new RegExp('\\{\\{\\s*\\*\\s*(.+?)\\s*\\}\\}', 'gim')
     
     haveParsed ={}
     
@@ -180,11 +181,21 @@ module.exports = class Server
 
         async.series(inserts, (err, results) ->
           for reg in results
-            content = content.replace(new RegExp(reg.token,'gim'), reg.content)
+            content = content.replace(new RegExp(utilities.escapeRegExp(reg.token), 'gm'), reg.content)
 
           parser(content)
         )
       else
+        for token in _.uniq(content.match(regexps.tokens))
+          variable = token.replace(regexps.tokens, '$1').trim()
+          
+          if tokens[variable]
+            variable = tokens[variable]
+          else
+            variable = '<!-- Undefined HTML token '+variable+' -->'
+
+          content = content.replace(new RegExp(utilities.escapeRegExp(token), 'gm'), variable)
+
         res.end(content)
         
     if utilities.isFile(path)

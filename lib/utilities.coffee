@@ -16,6 +16,9 @@ module.exports =
       ext: _path.extname(joined)
     }
   
+  escapeRegExp: (str) ->
+    str.replace(/[\-\[\]\/\{\}\(\)\*\+\?\.\\\^\$\|]/g, "\\$&")
+  
   directoryWalker:  (dir, cb) ->
     paths = []
     q = async.queue((item, callback) ->

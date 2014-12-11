@@ -296,30 +296,53 @@ describe('Server', ->
       cakewalk.post('/index.html', (req, res) ->
         @render(res,'./views/body.html')
       )
+      
+      cakewalk.post('/token.html', (req, res) ->
+        @render(res,'./views/token.html',
+          variable: 'Foo'
+        )
+      )
 
       setTimeout(->
-        makeRequest('post', 'http://localhost:'+port+'/index.html', (res, body) ->
-          expect(res.statusCode).to.equal(200)
-          expect(res.headers['content-type']).to.equal('text/html')
-          expected = """
-                    <!DOCTYPE html>
-                    <html lang="en">
-                      <head>
-                        <meta charset="utf-8">
-                        <title>title</title>
-                      </head>
-                      <body>
-                        <u>Module</u>
-                    <p>Foo Bar</p>
-                    <nav>
-                      My nav
-                    </nav>
-                      </body>
-                    </html>
-                    """
+        async.series(
+          inserts: (cb) ->
+            makeRequest('post', 'http://localhost:'+port+'/index.html', (res, body) ->
+              expect(res.statusCode).to.equal(200)
+              expect(res.headers['content-type']).to.equal('text/html')
+              expected = """
+                        <!DOCTYPE html>
+                        <html lang="en">
+                          <head>
+                            <meta charset="utf-8">
+                            <title>title</title>
+                          </head>
+                          <body>
+                            <u>Module</u>
+                        <p>Foo Bar</p>
+                        <nav>
+                          My nav
+                        </nav>
+                          </body>
+                        </html>
+                        """
 
-          expect(body).to.equal(expected)
+              expect(body).to.equal(expected)
 
+              cb()
+            )
+          tokens: (cb) ->
+            makeRequest('post', 'http://localhost:'+port+'/token.html', (res, body) ->
+              expect(res.statusCode).to.equal(200)
+              expect(res.headers['content-type']).to.equal('text/html')
+              expected = """
+                        <h1>Header - Foo</h1><!-- Undefined HTML token another -->
+                        """
+
+              expect(body).to.equal(expected)
+
+              cb()
+            )
+        , (err, results) ->
           done()
         )
       ,timeout)
