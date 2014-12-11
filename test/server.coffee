@@ -5,14 +5,22 @@ http = require('http')
 cakewalk = require('./../cakewalk.js')
 async = require('async')
 coffee = require('coffee-script')
+querystring = require('querystring')
 port = 7777
 timeout = 100
 _url = require('url')
 
-makeRequest = (method, url, cb) ->
+makeRequest = (method, url, data=false, cb) ->
+  method = method.toUpperCase()
   opts = _url.parse(url, false, true)  
-  opts.method = method.toUpperCase()    
-
+  opts.method = method
+  
+  if data and (method is 'GET' or method is 'DELETE')
+    if typeof data is 'object'
+      data = querystring.stringify(data)
+    
+    opts.path += '?'+data
+    
   req = http.request(opts, (res) ->
     body = ''
 
@@ -25,6 +33,12 @@ makeRequest = (method, url, cb) ->
     )
   )
   
+  if data and (method is 'POST' or method is 'PUT')
+    if typeof data is 'object'
+      data = querystring.stringify(data)
+
+    req.write(data)
+    
   req.end()
 
 
@@ -56,7 +70,7 @@ describe('Server', ->
       setTimeout(->
         async.series(
           found: (cb) ->
-            makeRequest('get', 'http://localhost:'+port+'/', (res, body) ->
+            makeRequest('get', 'http://localhost:'+port+'/', false, (res, body) ->
               expect(serverSide.url).to.equal('/')
               expect(serverSide.method).to.equal('GET')
               expect(serverSide.ext).to.equal('')
@@ -67,7 +81,7 @@ describe('Server', ->
               cb()
             )
           notfound: (cb) ->
-            makeRequest('get', 'http://localhost:'+port+'/bar', (res, body) ->
+            makeRequest('get', 'http://localhost:'+port+'/bar', false, (res, body) ->
               expect(serverSide.url).to.equal('/bar')
               expect(serverSide.method).to.equal('GET')
               expect(serverSide.ext).to.equal('')
@@ -78,7 +92,7 @@ describe('Server', ->
               cb()
             )
           badmethod: (cb) ->
-            makeRequest('post', 'http://localhost:'+port+'/', (res, body) ->
+            makeRequest('post', 'http://localhost:'+port+'/', false, (res, body) ->
               expect(serverSide.url).to.equal('/bar')
               expect(serverSide.method).to.equal('GET')
               expect(serverSide.ext).to.equal('')
@@ -93,7 +107,7 @@ describe('Server', ->
     )
     
     it('Should 404 undefined route', (done)->
-      makeRequest('get', 'http://localhost:'+port+'/foo', (res, body) ->
+      makeRequest('get', 'http://localhost:'+port+'/foo', false, (res, body) ->
         expect(res.statusCode).to.equal(404)
         done()
       )
@@ -116,13 +130,13 @@ describe('Server', ->
       setTimeout(->
         async.series(
           image: (cb) ->
-            makeRequest('get', 'http://localhost:'+port+'/public/images/test.jpg', (res, body) ->
+            makeRequest('get', 'http://localhost:'+port+'/public/images/test.jpg', false, (res, body) ->
               expect(res.statusCode).to.equal(200)
               expect(res.headers['content-type']).to.equal('image/jpeg')
               cb()
             )
           script: (cb) ->
-            makeRequest('get', 'http://localhost:'+port+'/public/scripts/site.coffee', (res, body) ->
+            makeRequest('get', 'http://localhost:'+port+'/public/scripts/site.coffee', false, (res, body) ->
               expect(res.statusCode).to.equal(200)
               expect(res.headers['content-type']).to.equal('application/coffeescript')
               
@@ -137,7 +151,7 @@ describe('Server', ->
               cb()
             )
           none: (cb) ->
-            makeRequest('get', 'http://localhost:'+port+'/public/images/test2.jpg', (res, body) ->
+            makeRequest('get', 'http://localhost:'+port+'/public/images/test2.jpg', false, (res, body) ->
               expect(res.statusCode).to.equal(404)
               cb()
             )
@@ -154,13 +168,13 @@ describe('Server', ->
       setTimeout(->
         async.series(
           image: (cb) ->
-            makeRequest('get', 'http://localhost:'+port+'/images/test.jpg', (res, body) ->
+            makeRequest('get', 'http://localhost:'+port+'/images/test.jpg', false, (res, body) ->
               expect(res.statusCode).to.equal(200)
               expect(res.headers['content-type']).to.equal('image/jpeg')
               cb()
             )
           script: (cb) ->
-            makeRequest('get', 'http://localhost:'+port+'/scripts/site.coffee', (res, body) ->
+            makeRequest('get', 'http://localhost:'+port+'/scripts/site.coffee', false, (res, body) ->
               expect(res.statusCode).to.equal(200)
               expect(res.headers['content-type']).to.equal('application/coffeescript')
               
@@ -175,7 +189,7 @@ describe('Server', ->
               cb()
             )
           none: (cb) ->
-            makeRequest('get', 'http://localhost:'+port+'/images/test2.jpg', (res, body) ->
+            makeRequest('get', 'http://localhost:'+port+'/images/test2.jpg', false, (res, body) ->
               expect(res.statusCode).to.equal(404)
               cb()
             )
@@ -196,27 +210,38 @@ describe('Server', ->
       )
       
       setTimeout(->
-        makeRequest('get', 'http://localhost:'+port+'/public/scripts/site.coffee', (res, body) ->
-          expect(res.statusCode).to.equal(200)
-          expect(res.headers['content-type']).to.equal('application/javascript')
-          
-          expected = """
-                    (function() {
-                      var arr, i, _i, _len;
+        async.series(
+          image: (cb) ->
+            makeRequest('get', 'http://localhost:'+port+'/images/test.jpg', false, (res, body) ->
+              expect(res.statusCode).to.equal(200)
+              expect(res.headers['content-type']).to.equal('image/jpeg')
+              cb()
+            )
+          script: (cb) ->
+            makeRequest('get', 'http://localhost:'+port+'/public/scripts/site.coffee', false, (res, body) ->
+              expect(res.statusCode).to.equal(200)
+              expect(res.headers['content-type']).to.equal('application/javascript')
 
-                      arr = [1, 2, 3];
+              expected = """
+                        (function() {
+                          var arr, i, _i, _len;
 
-                      for (_i = 0, _len = arr.length; _i < _len; _i++) {
-                        i = arr[_i];
-                        console.log(i);
-                      }
+                          arr = [1, 2, 3];
 
-                    }).call(this);
-                    
-                    """
-                        
-          expect(body).to.equal(expected)
-          
+                          for (_i = 0, _len = arr.length; _i < _len; _i++) {
+                            i = arr[_i];
+                            console.log(i);
+                          }
+
+                        }).call(this);
+
+                        """
+
+              expect(body).to.equal(expected)
+
+              cb()
+            )
+        , (err, results) ->
           done()
         )
       ,timeout)
@@ -228,13 +253,13 @@ describe('Server', ->
       setTimeout(->
         async.series(
           image: (cb) ->
-            makeRequest('get', 'http://localhost:'+port+'/images/test.jpg', (res, body) ->
+            makeRequest('get', 'http://localhost:'+port+'/images/test.jpg', false, (res, body) ->
               expect(res.statusCode).to.equal(200)
               expect(res.headers['content-type']).to.equal('image/jpeg')
               cb()
             )
           script: (cb) ->
-            makeRequest('get', 'http://localhost:'+port+'/scripts/site.coffee', (res, body) ->
+            makeRequest('get', 'http://localhost:'+port+'/scripts/site.coffee', false, (res, body) ->
               expect(res.statusCode).to.equal(200)
               expect(res.headers['content-type']).to.equal('application/coffeescript')
               
@@ -249,7 +274,7 @@ describe('Server', ->
               cb()
             )
           none: (cb) ->
-            makeRequest('get', 'http://localhost:'+port+'/public/images/test2.jpg', (res, body) ->
+            makeRequest('get', 'http://localhost:'+port+'/public/images/test2.jpg', false, (res, body) ->
               expect(res.statusCode).to.equal(404)
               cb()
             )
@@ -275,13 +300,13 @@ describe('Server', ->
       cakewalk.static('./views/', './')
 
       setTimeout(->
-        makeRequest('get', 'http://localhost:'+port+'/main.html', (res, body) ->
+        makeRequest('get', 'http://localhost:'+port+'/main.html', false, (res, body) ->
           expect(res.statusCode).to.equal(200)
           expect(res.headers['content-type']).to.equal('text/html')
 
           expected = """
                     {{ > mod.coffee }}
-                    <p>Foo Bar</p>
+                    <p>Foo Bar {{* number }}</p>
                     {{ > ./nav.html }}
                     """
 
@@ -294,7 +319,9 @@ describe('Server', ->
     
     it('Should render HTML templates', (done)->
       cakewalk.post('/index.html', (req, res) ->
-        @render(res,'./views/body.html')
+        @render(res,'./views/body.html',
+          number: 45
+        )
       )
       
       cakewalk.post('/token.html', (req, res) ->
@@ -306,7 +333,7 @@ describe('Server', ->
       setTimeout(->
         async.series(
           inserts: (cb) ->
-            makeRequest('post', 'http://localhost:'+port+'/index.html', (res, body) ->
+            makeRequest('post', 'http://localhost:'+port+'/index.html', false, (res, body) ->
               expect(res.statusCode).to.equal(200)
               expect(res.headers['content-type']).to.equal('text/html')
               expected = """
@@ -318,7 +345,7 @@ describe('Server', ->
                           </head>
                           <body>
                             <u>Module</u>
-                        <p>Foo Bar</p>
+                        <p>Foo Bar 45</p>
                         <nav>
                           My nav
                         </nav>
@@ -331,7 +358,7 @@ describe('Server', ->
               cb()
             )
           tokens: (cb) ->
-            makeRequest('post', 'http://localhost:'+port+'/token.html', (res, body) ->
+            makeRequest('post', 'http://localhost:'+port+'/token.html', false, (res, body) ->
               expect(res.statusCode).to.equal(200)
               expect(res.headers['content-type']).to.equal('text/html')
               expected = """
@@ -343,6 +370,46 @@ describe('Server', ->
               cb()
             )
         , (err, results) ->
+          done()
+        )
+      ,timeout)
+    )
+  )
+  
+  describe('Posting Data', ->
+    before(() ->
+      cakewalk.listen(port)
+    )
+    
+    after(() ->
+      cakewalk.reset()
+      cakewalk.close()
+    )
+    
+    it('Should serve static HTML', (done)->
+      cakewalk.get('/getter', (req, res) ->
+        res.end(req.data.foo)
+      )
+    
+      cakewalk.post('/poster', (req, res) ->
+        self = this
+        makeRequest('get', 'http://localhost:'+port+'/getter', req.data, (subres, body) ->
+          self.send(res,body)
+        )
+      )
+
+      setTimeout(->
+        makeRequest('post', 'http://localhost:'+port+'/poster', 
+          foo: 'bar'
+          baz: 3
+        , (res, body) ->
+          expect(res.statusCode).to.equal(200)
+          expect(res.headers['content-type']).to.equal('text/plain')
+
+          expected = 'bar'
+
+          expect(body).to.equal(expected)
+
           done()
         )
       ,timeout)

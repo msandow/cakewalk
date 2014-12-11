@@ -14,18 +14,19 @@ module.exports = class Server
     @routes = []
     
   serverHandler: (req, res) =>
-    parsed = utilities.parseRequest(req)
-    found = false
-    for r in @routes
-      found = r if r.route is parsed.path and
-        (r.method is 'ALL' or r.method is parsed.method)
-
     self = this
+  
+    utilities.parseRequest(req, (parsed) =>
+      found = false
+      for r in @routes
+        found = r if r.route is parsed.path and
+          (r.method is 'ALL' or r.method is parsed.method)
 
-    if found
-      found.handler.apply(self, [parsed, res])
-    else
-      @notFound(res)
+      if found
+        found.handler.apply(self, [parsed, res])
+      else
+        @notFound(res)
+    )
     
   sendFile: (res, path, transforms) ->
     parsed = utilities.getExtensionDataForPath(path)

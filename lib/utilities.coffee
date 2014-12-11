@@ -4,17 +4,28 @@ parsePath = require('parse-filepath')
 fs = require('fs')
 url = require('url')
 _path = require('path')
+querystring = require('querystring')
 
 module.exports =
-  parseRequest: (req) ->
+  parseRequest: (req, cb) ->
     joined = _path.join(process.cwd(), url.parse(req.url).pathname)
-    {
-      headers: req.headers
-      url: req.url
-      method: req.method
-      path: joined
-      ext: _path.extname(joined)
-    }
+    data = ''
+    url_parts = url.parse(req.url, true)
+    
+    req.on('data', (chunk) ->
+      data += chunk
+    )
+    
+    req.on('end', () ->
+      cb(
+        headers: req.headers
+        url: url_parts.pathname
+        method: req.method
+        path: joined
+        ext: _path.extname(joined)
+        data: if Object.keys(url_parts.query).length then url_parts.query else querystring.parse(data)
+      )
+    )
   
   escapeRegExp: (str) ->
     str.replace(/[\-\[\]\/\{\}\(\)\*\+\?\.\\\^\$\|]/g, "\\$&")
