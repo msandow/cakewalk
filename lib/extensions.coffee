@@ -32,7 +32,7 @@ module.exports =
   cat: "application/vnd.ms-pki.seccat"
   cd: "text/plain"
   cer: "application/x-x509-ca-cert"
-  coffee: "application/javascript"
+  coffee: "application/coffeescript"
   config: "application/xml"
   contact: "text/x-ms-contact"
   crl: "application/pkix-crl"

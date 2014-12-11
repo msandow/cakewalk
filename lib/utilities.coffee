@@ -63,10 +63,10 @@ module.exports =
       if stats.isDirectory()
         return true
       else
-        console.error('Path',path,'is not a file')
+        console.error('Directory path',path,'is not a file')
         return false
     else
-      console.error('Path',path,'not found')
+      console.error('Directory path',path,'not found')
       return false
   
   isFile: (path) ->
@@ -75,10 +75,10 @@ module.exports =
       if stats.isFile()
         return true
       else
-        console.error('Path',path,'is not a file')
+        console.error('File path',path,'is not a file')
         return false
     else
-      console.error('Path',path,'not found')
+      console.error('File path',path,'not found')
       return false
   
   getExtensionDataForPath: (path) ->

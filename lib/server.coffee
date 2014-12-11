@@ -5,32 +5,25 @@ url = require('url')
 async = require('async')
 _ = require('underscore')
 _path = require('path')
-coffee = require('coffee-script')
+http = require('http')
 
 module.exports = class Server
   constructor: () ->
     @port = null
-    @server = require('http')
+    @server = null
     @routes = []
     
   serverHandler: (req, res) =>
     parsed = utilities.parseRequest(req)
-    routes = _.filter(@routes, (i) ->
-      i.route is parsed.path
-    )
+    found = false
+    for r in @routes
+      found = r if r.route is parsed.path and
+        (r.method is 'ALL' or r.method is parsed.method)
 
     self = this
 
-    if routes.length
-      async.series(routes.map((i) ->
-        (cb) ->
-          next = () ->
-            cb(null, true)
-          
-          i.handler.apply(self, [req, res, next])
-      ), (err, results) ->
-        res.end()
-      )
+    if found
+      found.handler.apply(self, [parsed, res])
     else
       @notFound(res)
     
@@ -50,7 +43,7 @@ module.exports = class Server
       
         stream 
         .on('end', ()->
-          res.end(coffee.compile(streamText))
+          transforms[parsed.ext](res, streamText)
         )
         .on('readable', ()->
           chunk
@@ -62,7 +55,7 @@ module.exports = class Server
     else
       @notFound(res)
   
-  send: (res, data) ->
+  send: (res, data, customType) ->
     if typeof data is 'object'
       contentType = extensions.json
       data = JSON.stringify(data)
@@ -70,10 +63,10 @@ module.exports = class Server
       contentType = extensions.txt
       
     res.writeHead(200,
-      'Content-Type': contentType
+      'Content-Type': customType or contentType
     )
     
-    res.write(data)
+    res.end(data)
   
   notFound: (res) ->
     res.writeHead(404,
@@ -82,33 +75,67 @@ module.exports = class Server
     
     res.end('')
   
-  on: (route, handler) ->
+  assignRoute: (method, route, handler) ->
     newRoute = _path.resolve(__dirname, process.cwd() + route)
 
     if route[route.length-1] is '/' and newRoute[newRoute.length-1] isnt '/'
       newRoute += '/'
 
     @routes.push(
+      method: method
       route: newRoute
       handler: handler
     )
 
-  static: (path, transforms={}) ->
+  all: (route, handler) ->
+    @assignRoute('ALL', route, handler)
+
+  get: (route, handler) ->
+    @assignRoute('GET', route, handler)
+
+  post: (route, handler) ->
+    @assignRoute('POST', route, handler)
+
+  put: (route, handler) ->
+    @assignRoute('PUT', route, handler)
+
+  delete: (route, handler) ->
+    @assignRoute('DELETE', route, handler)
+
+  static: (path, root=false, transforms={}) ->
     self = this
+    
     if utilities.isDirectory(path)
-      utilities.directoryWalker(path, (files) =>        
+      utilities.directoryWalker(path, (files) =>
+        if root
+          files = files.map((i) ->
+            {
+              path: i.replace(path,root)
+              src: i
+            }
+          )
+        else
+          files = files.map((i) ->
+            {
+              path: i
+              src: i
+            }
+          )
+
         for file in files
-          file = _path.relative( process.cwd(), file )
-          file = '/' + file if file[0] isnt '/' and file[0] isnt '.'
-        
-          do (file) =>            
-            self.on(file, (req, res, next) =>
-              self.sendFile(res, '.'+file, transforms)
+          filePath = _path.relative( process.cwd(), file.path )
+          filePath = '/' + filePath if filePath[0] isnt '/' and filePath[0] isnt '.'
+          src = file.src
+          
+          do (filePath, src) =>
+            #console.log(filePath, src)
+            self.get(filePath, (req, res) =>
+              self.sendFile(res, src, transforms)
             )
         #console.log(@routes)
       )
   
-  render: (res, path, cb) ->
+  render: (res, path) ->
     dir = _path.dirname(path)
     
     res.writeHead(200,
@@ -158,8 +185,7 @@ module.exports = class Server
           parser(content)
         )
       else
-        res.write(content)
-        cb()
+        res.end(content)
         
     if utilities.isFile(path)
       fs.readFile(path, 'utf8', (err, content) ->
@@ -168,6 +194,13 @@ module.exports = class Server
   
   listen: (port = 8000) ->
     @port = port
-    @server
+    @server = http
       .createServer(@serverHandler)
       .listen(@port)
+  
+  reset: () ->
+    @port = null
+    @routes = []
+  
+  close: () ->
+    @server.close()
