@@ -18,10 +18,34 @@ module.exports = class Server
   
     utilities.parseRequest(req, (parsed) =>
       found = false
+      tokenFinder = new RegExp('\\{\\{(.+?)\\}\\}', '')
+      testingRoute = null
+      
       for r in @routes
-        found = r if r.route is parsed.path and
+        if tokenFinder.test(r.route)
+          testingRoute = utilities.escapeRegExp(r.route)
+          tokenReference = []
+
+          for token in r.route.match(new RegExp(tokenFinder.source, 'gi'))
+            testingRoute = testingRoute.replace(utilities.escapeRegExp(token),'([^\/]+?)')
+            tokenReference.push( token.replace(tokenFinder,'$1') )
+          
+          testingRoute+='$'
+          fedTokens = do () ->
+            reg = parsed.path.match(new RegExp(testingRoute, ''))
+            if reg then reg.slice(1) else []
+
+          for v,k in tokenReference
+            parsed.params[v] = fedTokens[k] if fedTokens[k]
+
+        else
+          testingRoute = utilities.escapeRegExp(r.route)+'$'
+
+        found = r if new RegExp(testingRoute,'').test(parsed.path) and
           (r.method is 'ALL' or r.method is parsed.method)
 
+      utilities.objectInts(parsed)
+      
       if found
         found.handler.apply(self, [parsed, res])
       else
@@ -62,6 +86,9 @@ module.exports = class Server
       data = JSON.stringify(data)
     if typeof data is 'number' or typeof data is 'string'
       contentType = extensions.txt
+    if typeof data is 'boolean'
+      contentType = extensions.txt
+      data = ''
       
     res.writeHead(200,
       'Content-Type': customType or contentType

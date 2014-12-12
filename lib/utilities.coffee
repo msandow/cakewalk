@@ -23,13 +23,21 @@ module.exports =
         method: req.method
         path: joined
         ext: _path.extname(joined)
-        data: if Object.keys(url_parts.query).length then url_parts.query else querystring.parse(data)
+        params: if Object.keys(url_parts.query).length then url_parts.query else querystring.parse(data)
       )
     )
   
   escapeRegExp: (str) ->
     str.replace(/[\-\[\]\/\{\}\(\)\*\+\?\.\\\^\$\|]/g, "\\$&")
-  
+
+  objectInts: (o)->
+    for own k,v of o
+      if typeof v is 'string' and not /[\D]/.test(v) and /[\d]/.test(v)
+        o[k] = parseInt(v)
+      if typeof v is 'object'
+        @objectInts(v)
+    
+    
   directoryWalker:  (dir, cb) ->
     paths = []
     q = async.queue((item, callback) ->
