@@ -1,5 +1,6 @@
 extensions = require('./extensions.coffee')
 utilities = require('./utilities.coffee')
+console = require('./console.coffee')
 fs = require('fs')
 url = require('url')
 async = require('async')
@@ -102,7 +103,14 @@ module.exports = class Server
     )
     
     res.end('')
-  
+
+  error: (res) ->
+    res.writeHead(500,
+      'Content-Type': extensions.txt
+    )
+    
+    res.end('')
+
   assignRoute: (method, route, handler) ->
     newRoute = _path.resolve(__dirname, process.cwd() + route)
 
@@ -156,19 +164,26 @@ module.exports = class Server
           src = file.src
           
           do (filePath, src) =>
-            #console.log(filePath, src)
             self.get(filePath, (req, res) =>
               self.sendFile(res, src, transforms)
             )
-        #console.log(@routes)
       )
   
-  render: (res, path, tokens={}) ->
-    dir = _path.dirname(path)
-    
+  sendRendered: (res, path, tokens={}) ->
     res.writeHead(200,
       'Content-Type': extensions.html
     )
+    
+    @renderHTML(path, tokens, (err, content) =>
+      if err
+        console.error(err.message)
+        @error(res)
+      else
+        res.end(content)
+    )
+  
+  renderHTML: (path, tokens={}, callback=(->)) ->
+    dir = _path.dirname(path)
     
     regexps =
       inserts: new RegExp('\\{\\{\\s*\\>\\s*(.+?)\\s*\\}\\}', 'gim')
@@ -192,6 +207,15 @@ module.exports = class Server
               fs.readFile(file, 'utf8', (err, content) ->
                 if err and err.errno is 34
                   content = '<!-- Cant find HTML insert '+err.path+' -->'
+                
+                subInserts = _.uniq(content.match(regexps.inserts))
+                .map((ins) ->
+                  _path.relative(__dirname, _path.join(dir, ins.replace(regexps.inserts, '$1').trim()))
+                )
+
+                if subInserts.indexOf(file) > -1
+                  cb(new Error('Circular template insertion in file '+file), null)
+                  return
 
                 haveParsed[file] =
                   token: ins
@@ -208,10 +232,14 @@ module.exports = class Server
         )
 
         async.series(inserts, (err, results) ->
+          if err
+            callback(err, '')
+            return
+
           for reg in results
             content = content.replace(new RegExp(utilities.escapeRegExp(reg.token), 'gm'), reg.content)
 
-          parser(content)
+          parser(content) if not err
         )
       else
         for token in _.uniq(content.match(regexps.tokens))
@@ -224,7 +252,7 @@ module.exports = class Server
 
           content = content.replace(new RegExp(utilities.escapeRegExp(token), 'gm'), variable)
 
-        res.end(content)
+        callback(false, content)
         
     if utilities.isFile(path)
       fs.readFile(path, 'utf8', (err, content) ->

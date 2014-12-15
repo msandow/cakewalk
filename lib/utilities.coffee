@@ -5,6 +5,7 @@ fs = require('fs')
 url = require('url')
 _path = require('path')
 querystring = require('querystring')
+console = require('./console.coffee')
 
 module.exports =
   parseRequest: (req, cb) ->
@@ -78,7 +79,7 @@ module.exports =
       path: dir
       root: ''
     )
-  
+
   isDirectory: (path) ->
     if fs.existsSync(path)
       stats = fs.lstatSync(path)

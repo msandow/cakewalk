@@ -334,15 +334,19 @@ describe('Server', ->
 
     it('Should render HTML templates', (done)->
       cakewalk.post('/index.html', (req, res) ->
-        @render(res,'./views/body.html',
+        @sendRendered(res,'./views/body.html',
           number: 45
         )
       )
 
       cakewalk.post('/token.html', (req, res) ->
-        @render(res,'./views/token.html',
+        @sendRendered(res,'./views/token.html',
           variable: 'Foo'
         )
+      )
+
+      cakewalk.get('/circular.html', (req, res) ->
+        @sendRendered(res,'./views/circular.html')
       )
 
       setTimeout(->
@@ -381,6 +385,13 @@ describe('Server', ->
                         """
 
               expect(body).to.equal(expected)
+
+              cb()
+            )
+          circulr: (cb) ->
+            makeRequest('get', 'http://localhost:'+port+'/circular.html', false, (res, body) ->
+              expect(res.statusCode).to.equal(500)
+              expect(res.headers['content-type']).to.equal('text/plain')
 
               cb()
             )
@@ -466,7 +477,7 @@ describe('Server', ->
     
     it('Should render from dynamic routes', (done)->
       cakewalk.get('/getuser/{{name}}', (req, res) ->
-        @render(res,'./views/main.html',
+        @sendRendered(res,'./views/main.html',
           number: req.params.name
         )
       )
